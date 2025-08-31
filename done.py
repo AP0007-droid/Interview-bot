@@ -5,11 +5,12 @@ import subprocess
 import json
 import random
 
-DB_URL = "postgresql://postgres:AbhaySingh%401966@db.nvjdmjebzuvjjhzohzra.supabase.co:5432/postgres"
+DB_URL = "postgresql://postgres.nvjdmjebzuvjjhzohzra:AbhaySingh%401966@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"
 
 def init_db():
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS questions (
             id SERIAL PRIMARY KEY,
@@ -17,6 +18,7 @@ def init_db():
             answer TEXT NOT NULL
         )
     """)
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS responses (
             id SERIAL PRIMARY KEY,
@@ -24,6 +26,16 @@ def init_db():
             question_id INT,
             response TEXT,
             FOREIGN KEY(question_id) REFERENCES questions(id)
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reports (
+            id SERIAL PRIMARY KEY,
+            candidate TEXT NOT NULL,
+            score INT,
+            total INT,
+            report TEXT
         )
     """)
     conn.commit()
@@ -54,7 +66,7 @@ def ensure_questions(num_needed):
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM questions")
     row = cur.fetchone()
-    count = row[0] if row else 0 
+    count = row[0] if row else 0
     if count < num_needed:
         to_add = num_needed - count
         new_qs = generate_new_questions_ollama(to_add)
@@ -74,55 +86,69 @@ def get_random_questions(num_questions):
     conn.close()
     return random.sample(all_qs, min(num_questions, len(all_qs)))
 
-st.title("Programming Interview Bot")
-
+# ----------------- STREAMLIT APP -----------------
+st.title("Interview Bot")
 init_db()
 
-candidate = st.text_input("Enter your name:")
+# --- Session state init ---
+if "interview_started" not in st.session_state:
+    st.session_state.interview_started = False
+    st.session_state.questions = []
+    st.session_state.responses = []
+    st.session_state.correct_count = 0
+    st.session_state.candidate = ""
 
+candidate = st.text_input("Enter your name:", value=st.session_state.candidate)
 num_questions = st.number_input("Number of questions (5-10)", min_value=5, max_value=10, value=5, step=1)
 
+# Start interview
 if st.button("Start Interview") and candidate:
+    st.session_state.candidate = candidate
     ensure_questions(num_questions)
     st.session_state.questions = get_random_questions(num_questions)
-    st.session_state.candidate = candidate
-    st.session_state.started = True
+    st.session_state.responses = []
+    st.session_state.correct_count = 0
+    st.session_state.interview_started = True
 
-if "started" in st.session_state and st.session_state.started:
-    st.subheader(f"Interview for {st.session_state.candidate}")
-    answers = {}
-
+if st.session_state.interview_started:
     for qid, text, ans in st.session_state.questions:
-        answers[qid] = st.text_input(f"{text}", key=f"q_{qid}")
-
-    if st.button("Submit Answers"):
-        responses = []
-        asked_questions = []
-        correct_count = 0
-
-        for qid, text, ans in st.session_state.questions:
-            user_resp = answers.get(qid, "")
-            responses.append((st.session_state.candidate, qid, user_resp))
-            asked_questions.append((text, ans, user_resp))
+        user_resp = st.text_input(f"{text}", key=f"q_{qid}")
+        if user_resp and qid not in [r[1] for r in st.session_state.responses]:
+            st.session_state.responses.append((st.session_state.candidate, qid, user_resp))
             if is_answer_correct(user_resp, ans):
-                correct_count += 1
+                st.session_state.correct_count += 1
 
+    # If all answered, finish interview
+    if len(st.session_state.responses) == len(st.session_state.questions):
+        st.subheader("Interview Finished")
+        st.write(f"Score: {st.session_state.correct_count} / {len(st.session_state.questions)} correct")
+
+        feedback = "Excellent work!" if st.session_state.correct_count == len(st.session_state.questions) else (
+            "Good attempt, but review some basics." if st.session_state.correct_count >= len(st.session_state.questions)//2 else "Needs improvement."
+        )
+
+        # Save responses
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         cur.executemany(
             "INSERT INTO responses (candidate, question_id, response) VALUES (%s, %s, %s)",
-            responses
+            st.session_state.responses
+        )
+        conn.commit()
+
+        # Save report
+        cur.execute(
+            "INSERT INTO reports (candidate, score, total, report) VALUES (%s, %s, %s, %s)",
+            (st.session_state.candidate, st.session_state.correct_count, len(st.session_state.questions), feedback)
         )
         conn.commit()
         cur.close()
         conn.close()
 
-        st.subheader("Interview Finished")
-        st.write(f"Score: {correct_count} / {len(asked_questions)} correct")
-        for q_text, q_ans, user_resp in asked_questions:
+        st.write(f"Feedback: {feedback}")
+
+        for q_text, q_ans, user_resp in [(q[1], q[2], r[2]) for q, r in zip(st.session_state.questions, st.session_state.responses)]:
             st.write(f"Q: {q_text}")
             st.write(f"Your Answer: {user_resp}")
             st.write(f"Expected: {q_ans}")
             st.write("---")
-
-        st.session_state.started = False

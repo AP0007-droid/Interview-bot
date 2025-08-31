@@ -40,7 +40,7 @@ def generate_new_questions_ollama(n=5):
     prompt = f"Generate {n} simple programming interview questions and their short answers in JSON list format. Example: [{{'q':'What is Python?','a':'A programming language'}}]"
     
     result = subprocess.run(
-        ["ollama", "run", "llama3"],  # change 'llama3' to your model name
+        ["ollama", "run", "llama3"],
         input=prompt,
         text=True,
         capture_output=True
@@ -50,7 +50,7 @@ def generate_new_questions_ollama(n=5):
         data = json.loads(result.stdout)
         return [(item["q"], item["a"]) for item in data]
     except Exception as e:
-        print("⚠️ Ollama output parsing failed, falling back to empty list:", e)
+        print("Ollama output parsing failed, falling back to empty list:", e)
         return []
 
 def ensure_questions(num_needed):
@@ -65,7 +65,7 @@ def ensure_questions(num_needed):
         if new_qs:
             cur.executemany("INSERT INTO questions (question, answer) VALUES (?, ?)", new_qs)
             conn.commit()
-            print(f"💡 Added {len(new_qs)} new questions from Ollama.")
+            print(f"Added {len(new_qs)} new questions from Ollama.")
     conn.close()
 
 def run_interview(candidate, num_questions):
@@ -111,11 +111,10 @@ def run_interview(candidate, num_questions):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--candidate", help="Candidate name")  # removed required=True
+    parser.add_argument("--candidate", help="Candidate name")
     parser.add_argument("--num-questions", type=int, help="Number of questions (5–10)")
     args = parser.parse_args()
 
-    # If args not provided, ask interactively
     candidate = args.candidate or input("Enter candidate name: ").strip()
     num_questions = args.num_questions or int(input("How many questions (5–10)? ").strip())
 
