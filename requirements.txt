@@ -2,5 +2,6 @@ streamlit
 psycopg2-binary
 ollama
 langchain
+langchain-ollama
 langgraph
 openai
