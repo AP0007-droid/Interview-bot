@@ -86,11 +86,9 @@ def get_random_questions(num_questions):
     conn.close()
     return random.sample(all_qs, min(num_questions, len(all_qs)))
 
-# ----------------- STREAMLIT APP -----------------
 st.title("Interview Bot")
 init_db()
 
-# --- Session state init ---
 if "interview_started" not in st.session_state:
     st.session_state.interview_started = False
     st.session_state.questions = []
@@ -101,7 +99,6 @@ if "interview_started" not in st.session_state:
 candidate = st.text_input("Enter your name:", value=st.session_state.candidate)
 num_questions = st.number_input("Number of questions (5-10)", min_value=5, max_value=10, value=5, step=1)
 
-# Start interview
 if st.button("Start Interview") and candidate:
     st.session_state.candidate = candidate
     ensure_questions(num_questions)
@@ -118,7 +115,6 @@ if st.session_state.interview_started:
             if is_answer_correct(user_resp, ans):
                 st.session_state.correct_count += 1
 
-    # If all answered, finish interview
     if len(st.session_state.responses) == len(st.session_state.questions):
         st.subheader("Interview Finished")
         st.write(f"Score: {st.session_state.correct_count} / {len(st.session_state.questions)} correct")
@@ -127,7 +123,6 @@ if st.session_state.interview_started:
             "Good attempt, but review some basics." if st.session_state.correct_count >= len(st.session_state.questions)//2 else "Needs improvement."
         )
 
-        # Save responses
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         cur.executemany(
@@ -136,7 +131,6 @@ if st.session_state.interview_started:
         )
         conn.commit()
 
-        # Save report
         cur.execute(
             "INSERT INTO reports (candidate, score, total, report) VALUES (%s, %s, %s, %s)",
             (st.session_state.candidate, st.session_state.correct_count, len(st.session_state.questions), feedback)
